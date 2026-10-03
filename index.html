@@ -492,16 +492,16 @@ body.ai-m{overflow:hidden}
 <body>
 <header class="top"><div class="in">
   <a class="logo" href="#/home"><span class="m" id="lg"></span><span class="wm">Micro<em>Bank</em></span></a>
-  <nav class="nav" id="nav"></nav>
+  <nav class="nav" id="nav" aria-label="Primary"></nav>
   <label class="search"><span id="si"></span><input id="q" type="search" placeholder="Search questions &amp; answers" autocomplete="off" aria-label="Search"></label>
   <div class="tools">
-    <button class="tl" data-show="bm" title="Bookmarks"><i data-i="bookmark"></i><b data-cnt="bm">0</b></button>
-    <button class="tl" data-show="fav" title="Favourites"><i data-i="heart"></i><b data-cnt="fav">0</b></button>
-    <button class="tl" data-show="note" title="Notes"><i data-i="note"></i><b data-cnt="note">0</b></button>
+    <button class="tl" data-show="bm" title="Bookmarks" aria-label="Bookmarks, 0"><i data-i="bookmark"></i><b data-cnt="bm">0</b></button>
+    <button class="tl" data-show="fav" title="Favourites" aria-label="Favourites, 0"><i data-i="heart"></i><b data-cnt="fav">0</b></button>
+    <button class="tl" data-show="note" title="Notes" aria-label="Notes, 0"><i data-i="note"></i><b data-cnt="note">0</b></button>
     <button class="ib" id="bFocus" title="Focus mode" aria-label="Focus mode"></button><button class="ib" id="bSet" title="Settings" aria-label="Settings"></button>
   </div></div></header>
 <div class="wrap" id="wrap"><aside id="filters"></aside><main id="main"></main></div>
-<nav class="tabbar" id="tabbar"></nav>
+<nav class="tabbar" id="tabbar" aria-label="Primary (mobile)"></nav>
 <div id="scrim" data-act="filt"></div>
 <button id="fx"></button>
 <div class="modal" id="modal"><div class="card" id="mbox"></div></div>
@@ -604,7 +604,7 @@ function pr(k){ // progress for 'g' (global), 'p:part', 't:topic'. Appendix cros
 function updProg(){
   $$('[data-p]').forEach(e=>{const r=pr(e.dataset.p);e.style.width=(r.n?100*r.d/r.n:0)+'%';e.toggleAttribute('data-full',r.n>0&&r.d===r.n)});
   $$('[data-pt]').forEach(e=>{const r=pr(e.dataset.pt);e.textContent=e.dataset.pt==='g'?`${r.d} / ${r.n} studied · ${Math.round(100*r.d/r.n)}%`:r.n===0?'':(e.dataset.sep||'')+`${r.d}/${r.n}`});
-  $$('[data-cnt]').forEach(e=>e.textContent=Object.keys(S[e.dataset.cnt]).length)}
+  $$('[data-cnt]').forEach(e=>{const n=Object.keys(S[e.dataset.cnt]).length,b=e.closest('.tl');e.textContent=n;if(b)b.setAttribute('aria-label',b.title+', '+n)})}
 
 /* ===== E. MARKDOWN ===== */
 const md=s=>(window.marked?marked.parse(s,{gfm:true}):'<pre>'+esc(s)+'</pre>').replace(/<table>/g,'<div class="tw"><table>').replace(/<\/table>/g,'</table></div>');
