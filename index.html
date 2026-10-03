@@ -586,9 +586,17 @@ function pass(q,ans){
   if(F.board&&!q.bd.includes(F.board)||F.set&&!q.vn.includes(F.set))return false;
   const m={fav:S.fav,bm:S.bm,star:S.star,note:S.note}[F.show];
   if(m&&!m[q.id])return false; if(F.show==='todo'&&S.done[q.id])return false;
-  return F.q.toLowerCase().split(/\s+/).filter(Boolean).every(w=>q.s.includes(w));
+  return qwords().every(w=>q.s.includes(w));
 }
-const hl=t=>{let h=esc(t);F.q.trim().split(/\s+/).filter(Boolean).forEach(w=>{h=h.replace(new RegExp('('+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')(?![^<]*>)','gi'),'<mark>$1</mark>')});return h};
+const hl=t=>{
+  const ws=F.q.trim().split(/\s+/).filter(Boolean)
+    .map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).sort((a,b)=>b.length-a.length);
+  if(!ws.length) return esc(t);
+  const re=new RegExp('('+ws.join('|')+')','gi');
+  return esc(t).split(/(&(?:amp|lt|gt|quot);)/).map((p,i)=>i%2?p:p.replace(re,'<mark>$1</mark>')).join('');
+};
+let QW={q:null,w:[]}; // search words, recomputed only when F.q changes (not per question)
+const qwords=()=>{if(QW.q!==F.q)QW={q:F.q,w:F.q.toLowerCase().split(/\s+/).filter(Boolean)};return QW.w};
 function pr(k){ // progress for 'g' (global), 'p:part', 't:topic'. Appendix cross-refs are excluded.
   const l=ALL.filter(q=>!q.x&&(k==='g'||(k[0]==='p'?q.part===k.slice(2):q.topic===k.slice(2))));
   return{d:l.filter(q=>S.done[q.id]).length,n:l.length}}
