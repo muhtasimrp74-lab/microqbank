@@ -548,8 +548,17 @@ const I=n=>`<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ===== C. PERSISTENT STATE (localStorage with in-memory fallback) ===== */
-let S={done:{},fav:{},bm:{},star:{},note:{},col:{},focus:0,fs:100,theme:'',last:0};
-try{Object.assign(S,JSON.parse(localStorage.getItem('mbq1')||'{}'))}catch(e){}
+let S={done:{},fav:{},bm:{},star:{},note:{},col:{},focus:0,fs:100,theme:'',last:0,fhide:0,v:1};
+const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
+try{
+  const saved=JSON.parse(localStorage.getItem('mbq1'));
+  if(isObj(saved)) for(const k in S){
+    if(!(k in saved)) continue;
+    if(isObj(S[k])){ if(isObj(saved[k])) S[k]=saved[k]; }
+    else if(k==='last'){ if(typeof saved[k]==='number'||typeof saved[k]==='string') S[k]=saved[k]; }
+    else if(typeof saved[k]===typeof S[k]) S[k]=saved[k];
+  }
+}catch{}
 const save=()=>{try{localStorage.setItem('mbq1',JSON.stringify(S))}catch(e){}};
 const newF=()=>({q:'',part:'',topic:'',type:'',src:[],sit:'',board:'',set:'',show:'all',sort:'book'});
 let F=newF(), OPEN=new Set(), NOTE=new Set(), PAGE='home', PART='';
@@ -777,7 +786,7 @@ $('#bSet').onclick=()=>{const pc=v=>(v-85)/45*100;$('#mbox').innerHTML=`<h3>Sett
   $('#sFs').oninput=e=>{S.fs=+e.target.value;e.target.style.setProperty('--p',pc(S.fs)+'%');$('#sFv').textContent=S.fs+'%';save();applyPrefs()};
   $('#sFo').onclick=e=>{e.currentTarget.classList.add('on');e.currentTarget.setAttribute('aria-checked','true');setTimeout(()=>{$('#modal').classList.remove('on');setFocus(1)},220)};$('#sCl').onclick=()=>$('#modal').classList.remove('on');
   $('#sEx').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));a.download='microbank-progress.json';a.click()};
-  $('#sRs').onclick=()=>{if(confirm('Erase all progress, stars, bookmarks and notes?')){S={done:{},fav:{},bm:{},star:{},note:{},col:{},focus:0,fs:100,theme:'',last:0};save();applyPrefs();$('#modal').classList.remove('on');render()}};
+  $('#sRs').onclick=()=>{if(confirm('Erase all progress, stars, bookmarks and notes?')){S={done:{},fav:{},bm:{},star:{},note:{},col:{},focus:0,fs:100,theme:'',last:0,fhide:0,v:1};save();applyPrefs();$('#modal').classList.remove('on');render()}};
   $('#modal').classList.add('on')};
 $('#modal').onclick=e=>{if(e.target.id==='modal')e.target.classList.remove('on')};
 
