@@ -766,7 +766,8 @@ document.addEventListener('click',e=>{
   if(act==='tgo'){const t=TI[a.dataset.id];TPO=false;F=newF();F.topic=t?t.id:'';$('#q').value='';const h='#/'+(PAGE==='questions'?'questions':'answers/'+(t?t.part:PART));if(location.hash===h)paint();else location.hash=h;return}
   if(act==='fgo'){const L=seq(),n=L[L.findIndex(x=>String(x.id)===FQ)+ +a.dataset.d];if(n){FQ=String(n.id);S.last=n.id;save();paint();scrollTo(0,0)}return}
   if(act==='fexit')return setFocus(0);
-  if(act==='topic'){F=newF();F.topic=a.dataset.id;location.hash='#/questions';return render()}
+  if(act==='topic'){F=newF();F.topic=a.dataset.id;
+    if(location.hash==='#/questions')render(); else location.hash='#/questions'; return}
   if(act==='tcol'){S.col[a.dataset.id]=S.col[a.dataset.id]?0:1;save();return paint()}
   if(act==='colall'){const open=PARTS.flatMap(p=>p.topics).some(t=>S.col[t.id]);PARTS.forEach(p=>(!PART||p.id===PART)&&p.topics.forEach(t=>S.col[t.id]=open?0:1));save();return paint()}
   if(act==='expall'){const vis=ALL.filter(q=>pass(q,true));const any=vis.some(q=>OPEN.has(q.id));vis.forEach(q=>any?OPEN.delete(q.id):OPEN.add(q.id));return paint()}
