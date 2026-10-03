@@ -602,7 +602,7 @@ function pr(k){ // progress for 'g' (global), 'p:part', 't:topic'. Appendix cros
   return{d:l.filter(q=>S.done[q.id]).length,n:l.length}}
 function updProg(){
   $$('[data-p]').forEach(e=>{const r=pr(e.dataset.p);e.style.width=(r.n?100*r.d/r.n:0)+'%';e.toggleAttribute('data-full',r.n>0&&r.d===r.n)});
-  $$('[data-pt]').forEach(e=>{const r=pr(e.dataset.pt);e.textContent=e.dataset.pt==='g'?`${r.d} / ${r.n} studied · ${Math.round(100*r.d/r.n)}%`:`${r.d}/${r.n}`});
+  $$('[data-pt]').forEach(e=>{const r=pr(e.dataset.pt);e.textContent=e.dataset.pt==='g'?`${r.d} / ${r.n} studied · ${Math.round(100*r.d/r.n)}%`:r.n===0?'':(e.dataset.sep||'')+`${r.d}/${r.n}`});
   $$('[data-cnt]').forEach(e=>e.textContent=Object.keys(S[e.dataset.cnt]).length)}
 
 /* ===== E. MARKDOWN ===== */
@@ -660,7 +660,7 @@ function list(ans){ // grouped by part → topic; topic headers collapse/expand 
     const ts=p.topics.map(t=>[t,srt(t.qs.filter(q=>pass(q,ans)))]).filter(x=>x[1].length); if(!ts.length)return;
     h+=`<section data-part="${p.id}">${PART?'':`<h2 class="ph">${I(META[p.id][0])} ${esc(p.name)}</h2>`}`+
     (ans&&p.intro&&!F.q&&!F.topic?`<details class="card md"><summary>Quick-recall map</summary>${md(p.intro.replace(/^## .*\n/,''))}</details>`:'')+
-    ts.map(([t,qs])=>`<div class="tp">${F.topic?'':`<button class="th${S.col[t.id]?' c':''}" data-act="tcol" data-id="${t.id}"><span class="tno">${t.no}</span><b>${esc(t.title)}</b><span class="cnt">${qs.length} Q · <span data-pt="t:${t.id}"></span></span><i class="bar"><u data-p="t:${t.id}"></u></i>${I('chev')}</button>`}${S.col[t.id]&&!F.topic?'':`<div class="tb">${qs.map(q=>card(q,ans)).join('')}</div>`}</div>`).join('')+
+    ts.map(([t,qs])=>`<div class="tp">${F.topic?'':`<button class="th${S.col[t.id]?' c':''}" data-act="tcol" data-id="${t.id}"><span class="tno">${t.no}</span><b>${esc(t.title)}</b><span class="cnt">${qs.length} Q<span data-pt="t:${t.id}" data-sep=" · "></span></span><i class="bar"><u data-p="t:${t.id}"></u></i>${I('chev')}</button>`}${S.col[t.id]&&!F.topic?'':`<div class="tb">${qs.map(q=>card(q,ans)).join('')}</div>`}</div>`).join('')+
     (ans&&p.notes&&!F.q&&!F.topic?`<details class="card md"><summary>Sources &amp; notes</summary>${md(p.notes)}</details>`:'')+`</section>`});
   if(!h)return '<p class="empty">No questions match the current filters.</p>';
   if(F.topic){ // previous / next topic navigation
@@ -737,6 +737,8 @@ function paint(){ // re-render header, list and filter panel (keeps scroll & sea
 function render(){
   const [path,qs]=(location.hash.slice(2)||'home').split('?'), [pg,arg]=path.split('/'), qp=new URLSearchParams(qs||'');
   PAGE=['home','audits','questions','answers'].includes(pg)?pg:'home'; PART=PAGE==='answers'?(META[arg]?arg:'virology'):'';
+  const fixH=!['home','audits','questions','answers'].includes(pg)?'#/home':(pg==='answers'&&!META[arg])?'#/answers/virology'+(qs?'?'+qs:''):''; // unknown route/part: correct the URL (no hashchange fired)
+  if(fixH)history.replaceState(null,'',fixH);
   const ans=PAGE==='answers', fl=ans||PAGE==='questions', jump=qp.get('q');
   if(jump&&BY[jump]){FQ=String(jump);if(!pass(BY[jump],true))F=newF();OPEN.add(BY[jump].id);S.col[BY[jump].topic]=0;S.last=BY[jump].id;save()}
   $('#wrap').className='wrap'+(fl?'':' nof')+(fl&&mqD.matches&&S.fhide?' nofl':''); $('#filters').style.display=fl?'':'none';
