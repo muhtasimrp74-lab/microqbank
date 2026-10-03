@@ -5,12 +5,8 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# AI endpoint used by the app: POST /api/chat  ->  netlify/functions/chat.mjs
-[[redirects]]
-  from = "/api/chat"
-  to = "/.netlify/functions/chat"
-  status = 200
-  force = true
+# AI endpoint: POST /api/chat is declared by the function itself (config.path in netlify/functions/chat.mjs),
+# which is also where its rate limit is attached. No redirect is needed here.
 
 # Don't serve backend source / config as static files (publish dir is the project root)
 [[redirects]]
