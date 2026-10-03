@@ -552,17 +552,18 @@ const I=n=>`<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ===== C. PERSISTENT STATE (localStorage with in-memory fallback) ===== */
-let S={done:{},fav:{},bm:{},star:{},note:{},col:{},focus:0,fs:100,theme:'',last:0,fhide:0,v:1};
+const dflt=()=>({done:{},fav:{},bm:{},star:{},note:{},col:{},focus:0,fs:100,theme:'',last:0,fhide:0,v:1});
+let S=dflt();
 const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
-try{
-  const saved=JSON.parse(localStorage.getItem('mbq1'));
-  if(isObj(saved)) for(const k in S){
+function mergeSaved(T,saved){ // validated merge of stored/imported state into T: wrong-typed keys are ignored (a stored {"done":null} can no longer brick the app)
+  if(isObj(saved)) for(const k in T){
     if(!(k in saved)) continue;
-    if(isObj(S[k])){ if(isObj(saved[k])) S[k]=saved[k]; }
-    else if(k==='last'){ if(typeof saved[k]==='number'||typeof saved[k]==='string') S[k]=saved[k]; }
-    else if(typeof saved[k]===typeof S[k]) S[k]=saved[k];
+    if(isObj(T[k])){ if(isObj(saved[k])) T[k]=saved[k]; }
+    else if(k==='last'){ if(typeof saved[k]==='number'||typeof saved[k]==='string') T[k]=saved[k]; }
+    else if(typeof saved[k]===typeof T[k]) T[k]=saved[k];
   }
-}catch{}
+  return T}
+try{mergeSaved(S,JSON.parse(localStorage.getItem('mbq1')))}catch{}
 let SAVEWARN=false, SVT=0;
 const toast=m=>{const t=$('#toast');if(!t)return;t.textContent=m;t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),5000)};
 const save=()=>{clearTimeout(SVT);SVT=0;
@@ -800,16 +801,37 @@ function setFocus(v,id){v=v?1:0;if(v===(S.focus?1:0)&&!id)return;
 const mqDark=matchMedia('(prefers-color-scheme:dark)');mqDark.addEventListener('change',()=>applyPrefs());
 function applyPrefs(){const dk=S.theme==='dark'||(!S.theme&&mqDark.matches),m=$('meta[name=theme-color]');if(m)m.content=dk?'#17110e':'#f8f3ec';document.documentElement.style.setProperty('--fs',S.fs+'%');S.theme?document.documentElement.dataset.theme=S.theme:delete document.documentElement.dataset.theme;document.documentElement.classList.toggle('focus',!!S.focus)}
 $('#bFocus').onclick=()=>setFocus(S.focus?0:1); $('#fx').onclick=()=>setFocus(0);
+const hasOwn=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
+function cleanState(st){ // keep only known ids and well-typed values (same shape rules as the stored state)
+  const ok=(m,known,val)=>{const o={};if(isObj(m))Object.keys(m).forEach(k=>{if(hasOwn(known,k)&&val(m[k]))o[k]=m[k]});return o},flag=v=>v===1||v===0||v===true;
+  ['done','fav','bm','star'].forEach(k=>st[k]=ok(st[k],BY,flag));st.col=ok(st.col,TI,flag);st.note=ok(st.note,BY,v=>typeof v==='string'&&v.length<=100000);return st}
+function importBackup(){
+  const f=document.createElement('input');f.type='file';f.accept='application/json,.json';
+  f.onchange=()=>f.files[0]&&f.files[0].text().then(t=>{
+    let raw;try{raw=JSON.parse(t)}catch{return alert('That file is not a MicroBank backup.')}
+    const full=isObj(raw)&&raw.app==='microbank';
+    if(full&&!(raw.version===1&&isObj(raw.state)))return alert('This backup was made by a different version of MicroBank and cannot be imported.');
+    const src=full?raw.state:raw; // old export format = a bare state object
+    if(!isObj(src)||!['done','fav','bm','star','note','col'].some(k=>isObj(src[k])))return alert('That file is not a MicroBank backup.');
+    const D=dflt(),st=cleanState(mergeSaved(dflt(),src)),ink=full&&window.MBINK?MBINK.clean(raw.ink):null,ch=full&&window.MBAI&&MBAI.cleanChats?MBAI.cleanChats(raw.chats):null,n=k=>Object.keys(st[k]).length,skipped=(ink?ink.skipped:0)+(ch?ch.skipped:0);
+    if(!confirm('Import this backup?\n\n• '+n('done')+' studied, '+n('fav')+' favourites, '+n('bm')+' bookmarks, '+n('star')+' starred, '+n('note')+' notes'+(ink?'\n• '+ink.ok+' handwriting strokes':'')+(ch?'\n• '+ch.ok+' AI chats':'')+'\n\nIt is merged with what is on this device; imported items win on conflicts.'+(skipped?'\n\n'+skipped+' invalid item'+(skipped==1?'':'s')+' in the file will be skipped.':'')))return;
+    ['done','fav','bm','star','note','col'].forEach(k=>Object.assign(S[k],st[k]));
+    ['focus','fs','theme','last','fhide'].forEach(k=>{if(k in src&&(k==='last'?(typeof src[k]==='number'||typeof src[k]==='string'):typeof src[k]===typeof D[k]))S[k]=st[k]});
+    save();if(ink&&ink.ok)MBINK.merge(ink.ink);if(ch&&ch.ok)MBAI.importChats(ch.chats);
+    applyPrefs();$('#modal').classList.remove('on');render();toast('Backup imported.')});
+  f.click()}
 $('#bSet').onclick=()=>{const pc=v=>(v-85)/45*100;$('#mbox').innerHTML=`<h3>Settings</h3>
   <div class="sr"><span>Theme</span><div class="seg" id="sTh">${[['','Auto'],['light','Light'],['dark','Dark']].map(([v,l])=>`<button data-t="${v}" class="${S.theme===v?'on':''}">${l}</button>`).join('')}</div></div>
   <div class="sr"><span>Text size<b id="sFv">${S.fs}%</b></span><input id="sFs" type="range" min="85" max="130" step="5" value="${S.fs}" style="--p:${pc(S.fs)}%" aria-label="Text size"></div>
   <div class="sr"><span>Focus mode</span><button class="sw${S.focus?' on':''}" id="sFo" role="switch" aria-checked="${!!S.focus}" aria-label="Focus mode"><i></i></button></div>
-  <div class="sa"><button class="btn o" id="sEx">Export progress &amp; notes</button> <button class="btn o" id="sRs">Reset all</button> <button class="btn" id="sCl">Close</button></div>`;
+  <div class="sa"><button class="btn o" id="sEx">Export backup</button> <button class="btn o" id="sIm">Import backup</button> <button class="btn o" id="sRs">Reset all</button> <button class="btn" id="sCl">Close</button></div>`;
   $('#sTh').onclick=e=>{const t=e.target.closest('[data-t]');if(!t)return;S.theme=t.dataset.t;save();applyPrefs();$$('#sTh button').forEach(x=>x.classList.toggle('on',x===t))};
   $('#sFs').oninput=e=>{S.fs=+e.target.value;e.target.style.setProperty('--p',pc(S.fs)+'%');$('#sFv').textContent=S.fs+'%';save();applyPrefs()};
   $('#sFo').onclick=e=>{e.currentTarget.classList.add('on');e.currentTarget.setAttribute('aria-checked','true');setTimeout(()=>{$('#modal').classList.remove('on');setFocus(1)},220)};$('#sCl').onclick=()=>$('#modal').classList.remove('on');
-  $('#sEx').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));a.download='microbank-progress.json';a.click()};
-  $('#sRs').onclick=()=>{if(confirm('Erase all progress, stars, bookmarks and notes?')){S={done:{},fav:{},bm:{},star:{},note:{},col:{},focus:0,fs:100,theme:'',last:0,fhide:0,v:1};save();applyPrefs();$('#modal').classList.remove('on');render()}};
+  $('#sEx').onclick=()=>{flushSave();const bk={app:'microbank',version:1,state:S,ink:window.MBINK?MBINK.read():{},chats:window.MBAI&&MBAI.exportChats?MBAI.exportChats():[]};
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(bk,null,1)],{type:'application/json'}));a.download='microbank-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)};
+  $('#sIm').onclick=importBackup;
+  $('#sRs').onclick=()=>{if(confirm('Erase all progress, stars, bookmarks and notes?')){S=dflt();save();applyPrefs();$('#modal').classList.remove('on');render()}};
   $('#modal').classList.add('on')};
 $('#modal').onclick=e=>{if(e.target.id==='modal')e.target.classList.remove('on')};
 
@@ -1058,6 +1080,12 @@ document.addEventListener('click',e=>{if(MORE&&!e.target.closest('#inkmenu,[data
 {const rp=()=>document.querySelectorAll('#main .q>canvas.mbi-base').forEach(c=>redraw(c.parentElement.dataset.id));
 try{matchMedia('(prefers-color-scheme:dark)').addEventListener('change',rp)}catch(e){}new MutationObserver(rp).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']})}
 tb();sync();load().then(o=>{Object.keys(o).forEach(k=>{if(!INK[k])INK[k]=o[k]});sync()});
+/* minimal hooks for the app-wide backup (audit 1.7): read all ink / merge validated ink (union by stroke id) */
+window.MBINK={
+  read(){flush();const o={};Object.keys(INK).forEach(k=>{if(INK[k]&&INK[k].length)o[k]=INK[k]});return JSON.parse(JSON.stringify(o))},
+  clean:cleanInk,
+  merge(d){let n=0;Object.keys(d||{}).forEach(k=>{const have=INK[k]||[],ids=new Set(have.map(s=>s.id)),add=d[k].filter(s=>!ids.has(s.id));
+    if(add.length){INK[k]=have.concat(add);n+=add.length;persist(k);redraw(k)}});sync();return n}};
 })();
 </script>
 <script>
@@ -1265,7 +1293,21 @@ panel.addEventListener('keydown',e=>e.stopPropagation()); // keep typing away fr
 /* ---------- boot ---------- */
 if(ls('mbai-wide')==='1')panel.classList.add('wide');
 loadAll().then(()=>{if(!cur){const id=ls('mbai-cur');cur=CH[id]||chatList()[0]||newChat()}setTimeout(buildIndex,2000)});
-window.MBAI={open:openAI,close:closeAI};
+/* hooks for the app-wide backup (audit 1.7) */
+const num=(v,d)=>typeof v==='number'&&isFinite(v)?v:d, qok=v=>typeof v==='string'||typeof v==='number';
+function cleanChat(c){if(!isObj(c)||typeof c.id!=='string'||!c.id||c.id==='__proto__'||!Array.isArray(c.msgs))return null;
+  const raw=c.msgs.filter(m=>isObj(m)&&(m.role==='user'||m.role==='assistant')&&typeof m.content==='string').slice(0,5000);
+  const msgs=raw.map(m=>{const o={role:m.role,content:m.content.slice(0,200000)};if(typeof m.t==='number'&&isFinite(m.t))o.t=m.t;if(m.qid!=null&&qok(m.qid))o.qid=m.qid;
+    if(typeof m.err==='string')o.err=m.err.slice(0,40);if(typeof m.cut==='string')o.cut=m.cut.slice(0,40);if(typeof m.msg==='string')o.msg=m.msg.slice(0,500);return o});
+  if(!msgs.length)return null;const same=raw.length===c.msgs.length;
+  return{id:c.id.slice(0,64),title:typeof c.title==='string'?c.title.slice(0,80):'Imported chat',created:num(c.created,Date.now()),updated:num(c.updated,Date.now()),msgs,
+    summary:same&&typeof c.summary==='string'?c.summary.slice(0,20000):'',sumN:same?Math.max(0,Math.min(msgs.length,num(c.sumN,0)|0)):0,
+    mode:MODES.some(x=>x[0]===c.mode)?c.mode:'normal',qid:c.qid!=null&&qok(c.qid)?c.qid:null,noQ:!!c.noQ}}
+window.MBAI={open:openAI,close:closeAI,
+  exportChats(){flush();return JSON.parse(JSON.stringify(Object.values(CH).filter(c=>c.msgs.length)))},
+  cleanChats(a){if(!Array.isArray(a))return null;const out=[];let skipped=0;a.forEach(c=>{const x=cleanChat(c);x?out.push(x):skipped++});return{chats:out,ok:out.length,skipped}},
+  importChats(list){let n=0;(list||[]).forEach(c=>{const h=CH[c.id];if(h&&h.updated>=c.updated)return;if(AI.busy&&cur&&cur.id===c.id)return;CH[c.id]=c;persist(c.id);n++});
+    if(cur&&CH[cur.id]&&CH[cur.id]!==cur){cur=CH[cur.id]}if(n&&AI.open)renderAll(true);return n}};
 })();
 </script>
 <script>
