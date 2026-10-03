@@ -857,6 +857,20 @@ function flush(){clearTimeout(st);if(!DIRTY.size)return;if(db){try{const s=db.tr
 const persist=q=>{DIRTY.add(String(q));clearTimeout(st);st=setTimeout(flush,350)};
 addEventListener('pagehide',flush);document.addEventListener('visibilitychange',()=>document.hidden&&flush());
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+/* ---- import validation: accept only well-formed strokes (audit 1.6) ---- */
+const isNum=v=>typeof v==='number'&&isFinite(v);
+function okStroke(s){
+  if(!s||typeof s!=='object'||Array.isArray(s))return false;
+  if(typeof s.id!=='string'||(s.t!=='p'&&s.t!=='h')||typeof s.c!=='string'||!isNum(s.w)||!Array.isArray(s.p)||!s.p.every(isNum))return false;
+  if(s.v===2)return Array.isArray(s.k)&&s.k.every(x=>typeof x==='string')&&s.p.length%6===0;
+  return s.v===undefined&&s.p.length%3===0; /* legacy proportional stroke */}
+function cleanInk(d){ /* -> {ink:{questionId:[strokes]},ok,skipped} or null when d is not an object */
+  if(!d||typeof d!=='object'||Array.isArray(d))return null;
+  const ink={};let ok=0,skipped=0;
+  Object.keys(d).forEach(k=>{if(k==='__proto__'||k==='constructor'||k==='prototype'){skipped++;return}
+    if(!Array.isArray(d[k])){skipped++;return}
+    const g=d[k].filter(okStroke);skipped+=d[k].length-g.length;ok+=g.length;ink[k]=g});
+  return{ink,ok,skipped}}
 /* ---- helpers ---- */
 const art=q=>document.getElementById('q'+q),cssc=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim()||'#a8321f',color=t=>t==='h'?U.hc:U.pc;
 const dseg=(px,py,ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,t=dx||dy?Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/(dx*dx+dy*dy))):0;return Math.hypot(px-ax-t*dx,py-ay-t*dy)};
@@ -1036,7 +1050,7 @@ function fixOld(){let n=0,sk=0;document.querySelectorAll('#main .q').forEach(a=>
     if(ch){persist(q);redraw(q)}});H.length=R.length=0;return{n,sk}}
 mn.addEventListener('click',e=>{const m=e.target.closest('[data-m]');if(!m)return;MORE=false;
   if(m.dataset.m==='x'){flush();const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({v:2,ink:INK})],{type:'application/json'}));a.download='microbank-annotations.json';a.click()}
-  if(m.dataset.m==='i'){const f=document.createElement('input');f.type='file';f.accept='application/json,.json';f.onchange=()=>f.files[0]&&f.files[0].text().then(t=>{try{const d=JSON.parse(t).ink;Object.keys(d).forEach(k=>{INK[k]=d[k];persist(k);redraw(k)});sync()}catch(x){alert('That file is not an annotation backup.')}});f.click()}
+  if(m.dataset.m==='i'){const f=document.createElement('input');f.type='file';f.accept='application/json,.json';f.onchange=()=>f.files[0]&&f.files[0].text().then(t=>{try{const raw=JSON.parse(t),r=cleanInk(raw&&raw.ink);if(!r)throw 0;Object.keys(r.ink).forEach(k=>{INK[k]=r.ink[k];persist(k);redraw(k)});sync();if(r.skipped)alert(`Imported ${r.ok} stroke${r.ok==1?'':'s'}. Skipped ${r.skipped} invalid item${r.skipped==1?'':'s'}.`)}catch(x){alert('That file is not an annotation backup.')}});f.click()}
   if(m.dataset.m==='a'&&confirm('Re-attach old handwriting to the text?\n\nThis only affects questions currently on screen. For best results do it in the same orientation / screen size you originally wrote in, with the answers open. Handwriting made after this update already follows the text automatically.')){const r=fixOld();alert(r.n?`Re-attached ${r.n} stroke${r.n>1?'s':''} to the text.`+(r.sk?` ${r.sk} stroke${r.sk>1?'s were':' was'} skipped (outside the visible card — open the answer and try again).`:''):r.sk?`${r.sk} stroke${r.sk>1?'s were':' was'} skipped because the card looks different from when you wrote on it — open the answer in the original layout and try again.`:'No old handwriting found on the questions currently on screen.')}
   if(m.dataset.m==='c'&&confirm('Erase ALL handwriting on every question? This cannot be undone.')){Object.keys(INK).forEach(k=>{INK[k]=[];persist(k);redraw(k)});H.length=R.length=0;SEL=null}
   tb()});
