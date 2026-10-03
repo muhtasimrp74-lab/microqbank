@@ -740,8 +740,16 @@ function head(ans){
   <div class="pt"><button class="ab fbtn" data-act="filt" aria-expanded="false">${I('filter')} <span>Filters</span>${fcount()?`<b>${fcount()}</b>`:''}</button><button class="ab" data-act="colall">${I('layers')} <span>${PARTS.flatMap(p=>p.topics).some(t=>S.col[t.id])?'Expand topics':'Collapse topics'}</span></button>${ans?`<button class="ab" data-act="expall">${I('book')} <span>${OPEN.size?'Collapse answers':'Expand answers'}</span></button>`:''}</div></div>`}
 
 /* ===== H. ROUTER & RENDER ===== */
+/* focus survives re-renders: remember which control (by its data-* identity, + the card it lives in) was focused, refocus its replacement */
+function fkey(){const a=document.activeElement;if(!a||a===document.body||!a.closest||!a.closest('#main,#filters'))return null;const d=a.dataset;
+  if(d.f===undefined&&d.act===undefined&&!a.classList.contains('qh-btn'))return null;const q=a.closest('.q');
+  return{f:d.f,v:d.v,a:d.act,i:d.id,d:d.d,q:q&&q.dataset.id,c:a.classList.contains('qh-btn')?'qh-btn':'',inTsl:!!a.closest('.tsl'),inDdl:!!a.closest('.ddl')}}
+function fres(k){if(!k)return;const root=k.q?$('#q'+k.q):document;if(!root)return;
+  const el=$$('button,[data-act],[data-f]',root).find(x=>x.dataset.f===k.f&&x.dataset.v===k.v&&x.dataset.act===k.a&&x.dataset.id===k.i&&x.dataset.d===k.d&&(!k.c||x.classList.contains(k.c))&&!x.disabled&&x.closest('#main,#filters'));
+  const t=el||(k.inTsl?$('.tsb'):k.inDdl?$('.ddb'):k.f==='reset'?$('#filters .fb button'):null); // gone/disabled (e.g. 'Clear all' once nothing is set): nearest sensible control
+  if(t&&t.focus)t.focus({preventScroll:true})}
 function paint(){ // re-render header, list and filter panel (keeps scroll & search focus)
-  if(PAGE!=='questions'&&PAGE!=='answers')return; $('#hd').innerHTML=FV()?'':head(PAGE==='answers'); $('#list').innerHTML=FV()?fview():list(PAGE==='answers'); $('#filters').innerHTML=filters(); updProg(); syncW()}
+  if(PAGE!=='questions'&&PAGE!=='answers')return; const fk=fkey(); $('#hd').innerHTML=FV()?'':head(PAGE==='answers'); $('#list').innerHTML=FV()?fview():list(PAGE==='answers'); $('#filters').innerHTML=filters(); updProg(); syncW(); fres(fk)}
 let LRT=null, BOOTED=false; // last rendered route; false until the first render has finished
 function render(){
   const [path,qs]=(location.hash.slice(2)||'home').split('?'), [pg,arg]=path.split('/'), qp=new URLSearchParams(qs||'');
@@ -794,7 +802,7 @@ document.addEventListener('click',e=>{
   if(act==='tog'){OPEN.has(q.id)?OPEN.delete(q.id):OPEN.add(q.id);S.last=q.id;save()}
   else if(act==='note'){NOTE.has(q.id)?NOTE.delete(q.id):NOTE.add(q.id)}
   else{const m={done:S.done,fav:S.fav,bm:S.bm,star:S.star}[act];m[q.id]?delete m[q.id]:m[q.id]=1;save()}
-  el.outerHTML=card(q,ans||FV(),FV()); updProg(); const eb=$('[data-act=expall] span'); if(eb)eb.textContent=OPEN.size?'Collapse answers':'Expand answers'});
+  const fk=fkey(); el.outerHTML=card(q,ans||FV(),FV()); fres(fk); updProg(); const eb=$('[data-act=expall] span'); if(eb)eb.textContent=OPEN.size?'Collapse answers':'Expand answers'});
 document.addEventListener('change',e=>{const s=e.target.dataset.fs;if(s){F[s]=e.target.value;paint()}});
 document.addEventListener('input',e=>{ // mirrors hero search into the header search; notes autosave
   if(e.target.id==='hq'){$('#q').value=e.target.value;$('#q').dispatchEvent(new Event('input'))}
