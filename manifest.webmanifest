@@ -1,0 +1,17 @@
+{
+  "name": "Microbiology 2nd Term — Study Platform",
+  "short_name": "MicroBank",
+  "description": "Microbiology question bank with model answers, annotations and an AI study assistant.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8f3ec",
+  "theme_color": "#f8f3ec",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
