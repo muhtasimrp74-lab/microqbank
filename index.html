@@ -491,6 +491,7 @@ body.ai-m{overflow:hidden}
 @media (max-width:480px){.qf{flex-wrap:wrap;row-gap:2px}}
 @media (min-width:1101px){.sr.sv{display:none}}
 .sv .btn{display:inline-flex;align-items:center;gap:6px} @media (pointer:coarse){.sv .btn{min-height:44px}}
+.expw{display:contents}
 /* ===== AUDIT FIXES: sr-only, skip link, route focus target ===== */
 .sr-only{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 .skip{position:fixed;left:12px;top:-64px;z-index:100;padding:10px 16px;border-radius:10px;background:var(--navy);color:var(--paper);font:600 .9rem var(--sans);text-decoration:none;transition:top .15s}
@@ -735,13 +736,18 @@ function audits(){
   return `<section class="au"><div><span class="eyebrow">Study priorities</span><h1 style="font-size:clamp(1.8rem,4vw,2.6rem);margin:6px 0 0;letter-spacing:-.02em">Topic frequency audit</h1><p class="lead2">${inl(pre[0].replace(/^\*|\*$/g,''))}</p></div>
   <div class="kp">${kp}</div><div class="lg"><b>Priority by total</b>${tiers}</div>
   <details class="card hw"><summary>How to read this audit</summary><div class="md">${md(pick(/How to read/))}</div></details>${cards}</section>`}
+/* "Expand answers" opens at most EXPN visible answers per click (opening hundreds at once builds a huge DOM + runs marked on all of them) */
+const EXPN=25;
+function expState(){const vis=ALL.filter(q=>pass(q,true)),rest=vis.filter(q=>!OPEN.has(q.id));return{vis,rest,anyOpen:vis.length>rest.length}}
+function expBtns(){const s=expState(),more=s.rest.length>0,lab=!s.anyOpen?'Expand answers':more?'Expand next '+Math.min(EXPN,s.rest.length):'Collapse answers';
+  return `<button class="ab" data-act="expall">${I('book')} <span>${lab}</span></button>`+(s.anyOpen&&more?`<button class="ab" data-act="colans">${I('book')} <span>Collapse answers</span></button>`:'')}
 function head(ans){
   const T=F.topic&&TI[F.topic],P0=PART&&PARTS.find(p=>p.id===PART),n=ALL.filter(q=>pass(q,ans)).length,short=p=>p.name.replace(/^Part \w+ — /,'');
   const tabs=ans?`<div class="tabs">${PARTS.map(p=>`<a data-part="${p.id}" data-go class="${p.id===PART?'on':''}" href="#/answers/${p.id}">${I(META[p.id][0])}<span>${esc(short(p))}</span></a>`).join('')}</div>`:'';
   return `${tabs}${tsel(ans)}<div class="ph3"><div><span class="eyebrow">${T?`Section ${T.no} · ${esc(short(PARTS.find(p=>p.id===T.part)))}`:P0?esc(P0.name.match(/^Part \w+/)[0]):'Question index'}</span>
   <h1>${T?esc(T.title):P0?esc(short(P0)):'All questions'}</h1>
   <nav class="crumb"><a href="#/home" data-go>Home</a> / <a href="#/${ans?'answers/'+PART:'questions'}" data-go>${ans?esc(short(P0)):'Questions'}</a>${T?` / ${T.no}`:''} &nbsp;·&nbsp; ${n} question${n==1?'':'s'}</nav></div>
-  <div class="pt"><button class="ab fbtn" data-act="filt" aria-expanded="false">${I('filter')} <span>Filters</span>${fcount()?`<b>${fcount()}</b>`:''}</button><button class="ab" data-act="colall">${I('layers')} <span>${PARTS.flatMap(p=>p.topics).some(t=>S.col[t.id])?'Expand topics':'Collapse topics'}</span></button>${ans?`<button class="ab" data-act="expall">${I('book')} <span>${OPEN.size?'Collapse answers':'Expand answers'}</span></button>`:''}</div></div>`}
+  <div class="pt"><button class="ab fbtn" data-act="filt" aria-expanded="false">${I('filter')} <span>Filters</span>${fcount()?`<b>${fcount()}</b>`:''}</button><button class="ab" data-act="colall">${I('layers')} <span>${PARTS.flatMap(p=>p.topics).some(t=>S.col[t.id])?'Expand topics':'Collapse topics'}</span></button>${ans?`<span class="expw">${expBtns()}</span>`:''}</div></div>`}
 
 /* ===== H. ROUTER & RENDER ===== */
 /* focus survives re-renders: remember which control (by its data-* identity, + the card it lives in) was focused, refocus its replacement */
@@ -750,7 +756,7 @@ function fkey(){const a=document.activeElement;if(!a||a===document.body||!a.clos
   return{f:d.f,v:d.v,a:d.act,i:d.id,d:d.d,q:q&&q.dataset.id,c:a.classList.contains('qh-btn')?'qh-btn':'',inTsl:!!a.closest('.tsl'),inDdl:!!a.closest('.ddl')}}
 function fres(k){if(!k)return;const root=k.q?$('#q'+k.q):document;if(!root)return;
   const el=$$('button,[data-act],[data-f]',root).find(x=>x.dataset.f===k.f&&x.dataset.v===k.v&&x.dataset.act===k.a&&x.dataset.id===k.i&&x.dataset.d===k.d&&(!k.c||x.classList.contains(k.c))&&!x.disabled&&x.closest('#main,#filters'));
-  const t=el||(k.inTsl?$('.tsb'):k.inDdl?$('.ddb'):k.f==='reset'?$('#filters .fb button'):null); // gone/disabled (e.g. 'Clear all' once nothing is set): nearest sensible control
+  const t=el||(k.inTsl?$('.tsb'):k.inDdl?$('.ddb'):k.f==='reset'?$('#filters .fb button'):k.a==='colans'?$('[data-act="expall"]'):null); // gone/disabled (e.g. 'Clear all' once nothing is set): nearest sensible control
   if(t&&t.focus)t.focus({preventScroll:true})}
 function paint(){ // re-render header, list and filter panel (keeps scroll & search focus)
   if(PAGE!=='questions'&&PAGE!=='answers')return; const fk=fkey(); $('#hd').innerHTML=FV()?'':head(PAGE==='answers'); $('#list').innerHTML=FV()?fview():list(PAGE==='answers'); $('#filters').innerHTML=filters(); updProg(); syncW(); fres(fk)}
@@ -797,7 +803,8 @@ document.addEventListener('click',e=>{
     if(location.hash==='#/questions')render(); else location.hash='#/questions'; return}
   if(act==='tcol'){S.col[a.dataset.id]=S.col[a.dataset.id]?0:1;save();return paint()}
   if(act==='colall'){const open=PARTS.flatMap(p=>p.topics).some(t=>S.col[t.id]);PARTS.forEach(p=>(!PART||p.id===PART)&&p.topics.forEach(t=>S.col[t.id]=open?0:1));save();return paint()}
-  if(act==='expall'){const vis=ALL.filter(q=>pass(q,true));const any=vis.some(q=>OPEN.has(q.id));vis.forEach(q=>any?OPEN.delete(q.id):OPEN.add(q.id));return paint()}
+  if(act==='expall'){const s=expState();s.rest.length?s.rest.slice(0,EXPN).forEach(q=>OPEN.add(q.id)):s.vis.forEach(q=>OPEN.delete(q.id));return paint()}
+  if(act==='colans'){expState().vis.forEach(q=>OPEN.delete(q.id));return paint()}
   if(act==='filt')return setFilt(!filtOpen());
   if(act==='dd'){DDO=!DDO;return paint()}
   if(act==='apf'){$$('.at tbody tr[data-part]').forEach(r=>r.hidden=!!a.dataset.v&&r.dataset.part!==a.dataset.v);$$('[data-act=apf]').forEach(b=>b.classList.toggle('on',b===a));return}
@@ -806,7 +813,7 @@ document.addEventListener('click',e=>{
   if(act==='tog'){OPEN.has(q.id)?OPEN.delete(q.id):OPEN.add(q.id);S.last=q.id;save()}
   else if(act==='note'){NOTE.has(q.id)?NOTE.delete(q.id):NOTE.add(q.id)}
   else{const m={done:S.done,fav:S.fav,bm:S.bm,star:S.star}[act];m[q.id]?delete m[q.id]:m[q.id]=1;save()}
-  const fk=fkey(); el.outerHTML=card(q,ans||FV(),FV()); fres(fk); updProg(); const eb=$('[data-act=expall] span'); if(eb)eb.textContent=OPEN.size?'Collapse answers':'Expand answers'});
+  const fk=fkey(); el.outerHTML=card(q,ans||FV(),FV()); fres(fk); updProg(); const xw=$('.expw'); if(xw)xw.innerHTML=expBtns()});
 document.addEventListener('change',e=>{const s=e.target.dataset.fs;if(s){F[s]=e.target.value;paint()}});
 document.addEventListener('input',e=>{ // mirrors hero search into the header search; notes autosave
   if(e.target.id==='hq'){$('#q').value=e.target.value;$('#q').dispatchEvent(new Event('input'))}
