@@ -993,11 +993,15 @@ function rigidKey(a,pts,u){if(!pts.length)return null;const b=box(a),m=1.5*u;let
   a.querySelectorAll(RIGID).forEach(e=>{const r=e.getBoundingClientRect();if(!r.width||!r.height)return;
     const ow=Math.min(x1,r.right-b.left)-Math.max(x0,r.left-b.left),oh=Math.min(y1,r.bottom-b.top)-Math.max(y0,r.top-b.top);if(ow<=0||oh<=0)return;const o=ow*oh;if(o>bo){bo=o;best=e}});
   return best&&bo*2>=S?blkKey(a,best):null}
+/* A handwritten mark (small / free-form) is anchored as ONE rigid unit to the character nearest its centre, so rotating or re-wrapping can only move it, never tear it
+   apart. Only long flat marks (underline, strike-through, highlighter swipe) keep per-point anchoring, so they still follow text that wraps. */
+function oneAnchor(F,pts,u){if(!pts.length)return null;let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;pts.forEach(p=>{if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1]});
+  return y1-y0<.75*u&&x1-x0>4*u?null:nearest(F,(x0+x1)/2,(y0+y1)/2)}
 function mkStroke(a,q,t,c,w,pts,id){const G=geo(a,q),F=getF(G),u=G.u;id=id||uid();
   if(!F.items.length){const k=1000/(G.W||1);return{id,t,c,w:+(w*k).toFixed(2),p:pts.flatMap(p=>[+(p[0]*k).toFixed(1),+(p[1]*k).toFixed(1),+(p[2]||.5).toFixed(2)])}}
   const keys=[],kx=new Map(),p=[];let pv=null;
-  const rk=rigidKey(a,pts,u),RI=rk!=null?F.items.filter(x=>x.k===rk):[],AF=RI.length?{items:RI}:F;
-  pts.forEach(pt=>{const it=nearest(AF,pt[0],pt[1]);let i=kx.get(it.k);if(i==null){i=keys.length;kx.set(it.k,i);keys.push(it.k)}
+  const rk=rigidKey(a,pts,u),RI=rk!=null?F.items.filter(x=>x.k===rk):[],AF=RI.length?{items:RI}:F,A1=RI.length?null:oneAnchor(F,pts,u);
+  pts.forEach(pt=>{const it=A1||nearest(AF,pt[0],pt[1]);let i=kx.get(it.k);if(i==null){i=keys.length;kx.set(it.k,i);keys.push(it.k)}
     const l=pv?Math.hypot(pt[0]-pv[0],pt[1]-pv[1])/u:0;pv=pt;p.push(i,it.o,+((pt[0]-it.cx)/u).toFixed(2),+((pt[1]-it.cy)/u).toFixed(2),+(pt[2]||.5).toFixed(2),+l.toFixed(2))});
   return{id,v:2,t,c,w:+(w/u).toFixed(3),k:keys,p}}
 /* ---- ultra-HD windowed canvases: only the visible part of a card (plus a margin) is rasterised, at dpr x pinch-zoom ---- */
@@ -1027,7 +1031,18 @@ function drawRun(c,s,run,w,dx,dy,T){const n=run.length;if(!n)return;
   let mx=X(0),my=Y(0);for(let i=1;i<n;i++){const ex=i==n-1?X(i):(X(i)+X(i+1))/2,ey=i==n-1?Y(i):(Y(i)+Y(i+1))/2;c.lineWidth=W(i);c.beginPath();c.moveTo(mx,my);c.quadraticCurveTo(X(i),Y(i),ex,ey);c.stroke();mx=ex;my=ey}}
 function bboxSel(q){const a=art(q);if(!SEL||SEL.q!=q||!a)return null;const G=geo(a,q),o=OFF&&OFF.q==q?OFF:{dx:0,dy:0};let b=null;
   (INK[q]||[]).forEach(s=>{if(!SEL.ids.has(s.id))return;const r=wpx(G,s)/2;runsOf(G,s).forEach(run=>run.forEach(p=>{const X=p[0]+o.dx,Y=p[1]+o.dy;b=b?[Math.min(b[0],X-r),Math.min(b[1],Y-r),Math.max(b[2],X+r),Math.max(b[3],Y+r)]:[X-r,Y-r,X+r,Y+r]}))});return b}
-function redraw(q){const a=art(q);if(!a)return;const L=INK[q]||[],has=!!a.querySelector(':scope>canvas.mbi-base');if(!L.length){has&&drop(a);return}
+/* Strokes saved before the rigid anchor was introduced are anchored point-by-point. If (and only if) the layout on screen right now reproduces their ORIGINAL geometry exactly
+   - every resolved segment is as long as the segment length stored when it was drawn - the stroke is re-anchored as one rigid unit, freezing the exact shape that was drawn.
+   In any other layout (e.g. already rotated, where such a stroke looks torn) nothing is touched, so it heals and is upgraded the next time it is seen in the layout it was drawn in. */
+function rigid(a,q){if(cur||OFF)return;const L=INK[q];if(!L||!L.length)return;const G=geo(a,q);let ch=false,F;
+  const out=L.map(s=>{if(s.v!==2||s.p.length<12||s.k.every(k=>/(^|>)PRE\./.test(k)))return s;
+    const p=s.p;let one=true;for(let i=6;i<p.length;i+=6)if(p[i]!==p[0]||p[i+1]!==p[1]){one=false;break}if(one)return s;
+    const runs=runsOf(G,s);if(runs.length!==1||runs[0].length!==p.length/6)return s;
+    const r=runs[0];F=F||getF(G);if(!F.items.length||oneAnchor(F,r,G.u)===null)return s;
+    for(let i=1;i<r.length;i++){const d=Math.hypot(r[i][0]-r[i-1][0],r[i][1]-r[i-1][1]),l=p[i*6+5]*G.u;if(Math.abs(d-l)>.15*l+1.5)return s}
+    ch=true;return mkStroke(a,q,s.t,s.c,wpx(G,s),r,s.id)});
+  if(ch){INK[q]=out;persist(q)}}
+function redraw(q){const a=art(q);if(!a)return;rigid(a,q);const L=INK[q]||[],has=!!a.querySelector(':scope>canvas.mbi-base');if(!L.length){has&&drop(a);return}
   theme();const T=target(a);if(!T){has&&drop(a);return}paint(a,q,T,L)}
 function paint(a,q,T,L){const G=geo(a,q),o=OFF&&OFF.q==q?OFF:null;RO&&RO.observe(a);
   const bc=layer(a,'base',T),bx=bc.getContext('2d');clr(bx,bc);
