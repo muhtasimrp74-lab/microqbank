@@ -137,7 +137,7 @@ aside details{border-top:1px solid var(--line);padding:6px 0} aside summary{curs
 .q{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 22px 12px;transition:border-color .15s,box-shadow .15s}
 .q:hover{border-color:var(--line2)} .q.o{border-color:var(--acc);box-shadow:0 6px 24px rgba(11,31,58,.06)} .q.dn .num{background:var(--acc);color:#fff}
 .qh{display:flex;gap:14px;align-items:flex-start} .qh[data-act]{cursor:pointer}
-.qh>svg{margin:5px 0 0 auto;color:var(--slate);transition:transform .2s} .q.o .qh>svg{transform:rotate(180deg)}
+.qh>svg,.qh-btn{margin:5px 0 0 auto;color:var(--slate)} .qh-btn{flex:none;display:inline-flex;padding:0;line-height:0;border-radius:6px} .qh>svg,.qh-btn svg{transition:transform .2s} .q.o .qh>svg,.q.o .qh-btn svg{transform:rotate(180deg)}
 .num{flex:none;min-width:2.6em;text-align:center;padding:3px 8px;border-radius:7px;background:var(--accbg);color:var(--acct);font:600 .78rem var(--sans);font-variant-numeric:tabular-nums;margin-top:3px}
 .qt{flex:1;font:500 1.08rem/1.45 var(--serif);color:var(--navy)}
 .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 0 calc(2.6em + 14px);font-size:.76rem;color:var(--slate)}
@@ -655,9 +655,9 @@ const ab=(act,ic,lb,on)=>`<button class="ab${on?' on':''}" data-act="${act}" tit
 function card(q,ans,fz){
   const o=fz||OPEN.has(q.id),nt=S.note[q.id]||'',gi=(act,ic,lb,k)=>`<button class="gi${S[k][q.id]?' on':''}" data-act="${act}" title="${lb}" aria-label="${lb}" aria-pressed="${!!S[k][q.id]}">${I(ic)}</button>`;
   return `<article class="q${o?' o':''}${S.done[q.id]?' dn':''}" id="q${q.id}" data-id="${q.id}" data-part="${q.part}">
-  <div class="qh"${ans&&!fz?' data-act="tog" role="button" tabindex="0" aria-expanded="'+o+'"':''}><span class="num">${q.x?'↗ ':''}${q.n}</span><h3 class="qt">${qtx(q)}</h3>${ans&&!fz?I('chev'):''}</div>
+  <div class="qh"${ans&&!fz?' data-act="tog"':''}><span class="num">${q.x?'↗ ':''}${q.n}</span><h3 class="qt" id="qt${q.id}">${qtx(q)}</h3>${ans&&!fz?`<button type="button" class="qh-btn" aria-expanded="${o}"${o?' aria-controls="qb'+q.id+'"':''} aria-labelledby="qt${q.id}">${I('chev')}</button>`:''}</div>
   <div class="meta">${tags(q)}</div>
-  ${ans&&o?`<div class="body md">${mdc(q)}</div>${related(q)}`:''}
+  ${ans&&o?`<div class="body md" id="qb${q.id}">${mdc(q)}</div>${related(q)}`:''}
   <div class="qf"><button class="st${S.done[q.id]?' on':''}" data-act="done">${I('check')}<span>${S.done[q.id]?'Studied':'Mark studied'}</span></button><span class="sp"></span>
   ${fz?'':`<button class="gi" data-act="focusq" title="Focus on this question" aria-label="Focus on this question">${I('eye')}</button>`}${gi('fav','heart','Favourite','fav')}${gi('bm','bookmark','Bookmark','bm')}${gi('star','star','Star','star')}<button class="gl aib" data-askai title="Ask AI about this question" aria-label="Ask AI about this question">${I('aiSpark')}<span>Ask AI</span></button><button class="gl${nt?' on':''}" data-act="note">${I('note')}<span>${nt?'Edit note':'Add note'}</span></button>
   ${ans?'':`<a class="lk" href="#/answers/${q.part}?q=${q.id}">Answer ${I('arrow')}</a>`}</div>
@@ -808,7 +808,7 @@ document.addEventListener('input',e=>{ // mirrors hero search into the header se
   if(e.target.id==='hq'){$('#q').value=e.target.value;$('#q').dispatchEvent(new Event('input'))}
   if(e.target.classList.contains('note')){const id=e.target.dataset.id,v=e.target.value;v.trim()?S.note[id]=v:delete S.note[id];saveSoon()}});
 let tmr;$('#q').addEventListener('input',e=>{clearTimeout(tmr);tmr=setTimeout(()=>{F.q=e.target.value;if(PAGE==='questions'||PAGE==='answers')paint();else{location.hash='#/questions'}},150)});
-document.addEventListener('keydown',e=>{if(FV()&&/^Arrow(Left|Right)$/.test(e.key)&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){const b=$('[data-d="'+(e.key==='ArrowLeft'?-1:1)+'"]');if(b&&!b.disabled)b.click()}if(e.key==='Enter'&&e.target.matches&&e.target.matches('.qh[data-act]'))e.target.click();if(e.key==='/'&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();$('#q').focus()}if(e.key==='Escape'){if(!mqD.matches&&filtOpen())setFilt(0);setFocus(0);$('#modal').classList.remove('on')}});
+document.addEventListener('keydown',e=>{if(FV()&&/^Arrow(Left|Right)$/.test(e.key)&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){const b=$('[data-d="'+(e.key==='ArrowLeft'?-1:1)+'"]');if(b&&!b.disabled)b.click()}if(e.key==='/'&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();$('#q').focus()}if(e.key==='Escape'){if(!mqD.matches&&filtOpen())setFilt(0);setFocus(0);$('#modal').classList.remove('on')}});
 window.addEventListener('hashchange',render);
 document.addEventListener('click',e=>{if(e.target.closest('[data-skip]')){e.preventDefault();$('#main').focus()}});
 document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g){F.topic=g.dataset.topic||'';F.part='';if(g.getAttribute('href')===location.hash)setTimeout(render)}},true)
