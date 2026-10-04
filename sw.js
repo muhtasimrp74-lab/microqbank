@@ -1,16 +1,13 @@
 /* Service worker — static app shell cached for offline study.
    The AI endpoint (/api/chat, /.netlify/*) is NEVER intercepted or cached: it always goes to the network. */
-const VERSION = 'mb-v1';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png'];
-const CDN = ['https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js'];
-const CACHEABLE_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdnjs.cloudflare.com'];
+const VERSION = 'mb-v2';
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png', 'vendor/marked.min.js'];
+const CACHEABLE_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const c = await caches.open(VERSION);
     await c.addAll(SHELL);
-    // best-effort: third-party libs (opaque responses are fine for <script>)
-    await Promise.all(CDN.map(async (u) => { try { const r = await fetch(new Request(u, { mode: 'no-cors' })); await c.put(u, r); } catch (_) {} }));
     await self.skipWaiting();
   })());
 });
