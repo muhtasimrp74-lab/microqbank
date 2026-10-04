@@ -993,11 +993,15 @@ function rigidKey(a,pts,u){if(!pts.length)return null;const b=box(a),m=1.5*u;let
   a.querySelectorAll(RIGID).forEach(e=>{const r=e.getBoundingClientRect();if(!r.width||!r.height)return;
     const ow=Math.min(x1,r.right-b.left)-Math.max(x0,r.left-b.left),oh=Math.min(y1,r.bottom-b.top)-Math.max(y0,r.top-b.top);if(ow<=0||oh<=0)return;const o=ow*oh;if(o>bo){bo=o;best=e}});
   return best&&bo*2>=S?blkKey(a,best):null}
+/* A handwritten mark (small / free-form) is anchored as ONE rigid unit to the character nearest its centre, so rotating or re-wrapping can only move it, never tear it
+   apart. Only long flat marks (underline, strike-through, highlighter swipe) keep per-point anchoring, so they still follow text that wraps. */
+function oneAnchor(F,pts,u){if(!pts.length)return null;let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;pts.forEach(p=>{if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1]});
+  return y1-y0<.75*u&&x1-x0>4*u?null:nearest(F,(x0+x1)/2,(y0+y1)/2)}
 function mkStroke(a,q,t,c,w,pts,id){const G=geo(a,q),F=getF(G),u=G.u;id=id||uid();
   if(!F.items.length){const k=1000/(G.W||1);return{id,t,c,w:+(w*k).toFixed(2),p:pts.flatMap(p=>[+(p[0]*k).toFixed(1),+(p[1]*k).toFixed(1),+(p[2]||.5).toFixed(2)])}}
   const keys=[],kx=new Map(),p=[];let pv=null;
-  const rk=rigidKey(a,pts,u),RI=rk!=null?F.items.filter(x=>x.k===rk):[],AF=RI.length?{items:RI}:F;
-  pts.forEach(pt=>{const it=nearest(AF,pt[0],pt[1]);let i=kx.get(it.k);if(i==null){i=keys.length;kx.set(it.k,i);keys.push(it.k)}
+  const rk=rigidKey(a,pts,u),RI=rk!=null?F.items.filter(x=>x.k===rk):[],AF=RI.length?{items:RI}:F,A1=RI.length?null:oneAnchor(F,pts,u);
+  pts.forEach(pt=>{const it=A1||nearest(AF,pt[0],pt[1]);let i=kx.get(it.k);if(i==null){i=keys.length;kx.set(it.k,i);keys.push(it.k)}
     const l=pv?Math.hypot(pt[0]-pv[0],pt[1]-pv[1])/u:0;pv=pt;p.push(i,it.o,+((pt[0]-it.cx)/u).toFixed(2),+((pt[1]-it.cy)/u).toFixed(2),+(pt[2]||.5).toFixed(2),+l.toFixed(2))});
   return{id,v:2,t,c,w:+(w/u).toFixed(3),k:keys,p}}
 /* ---- ultra-HD windowed canvases: only the visible part of a card (plus a margin) is rasterised, at dpr x pinch-zoom ---- */
