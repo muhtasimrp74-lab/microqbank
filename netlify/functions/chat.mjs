@@ -1,21 +1,27 @@
 // Streaming AI endpoint for the Microbiology study app.  POST /api/chat   (Google Gemini API, free tier)
 // Secrets live ONLY in Netlify environment variables (never sent to the browser, never in GitHub).
 //   GEMINI_API_KEY            required  (Google AI Studio key, free tier)
+//   AI_ACCESS_CODE            REQUIRED in practice. Shared code the browser must send (x-access-code header); compared in
+//                             constant time. If it is unset the endpoint answers 503 "AI access is not configured."
+//   AI_ALLOW_OPEN             set to exactly "true" to run WITHOUT an access code (anyone can spend your quota). Default: off.
 //   GEMINI_MODEL              default gemini-3.8-flash
 //   GEMINI_FALLBACK_MODEL     default gemini-3.5-flash-lite  (used automatically when the main model is rate-limited/unavailable;
 //                             each model has its own free quota. Set to empty to disable.)
-//   GEMINI_MAX_OUTPUT_TOKENS  default 8192   (includes any "thinking" tokens)
+//   GEMINI_MAX_OUTPUT_TOKENS  default 8000, hard ceiling 8000 (includes any "thinking" tokens; the app has a "Continue" button)
 //   GEMINI_THINKING_LEVEL     optional, e.g. low/medium/high; unset = model default
-//   AI_MAX_INPUT_CHARS        default 48000  (~12k tokens total sent per request; oldest chat turns are dropped first)
-//   AI_MAX_USER_CHARS         default 6000   (longest single message a student can send)
+//   AI_MAX_INPUT_CHARS        default 48000, hard ceiling 60000  (total chars sent per request; oldest chat turns are dropped first)
+//   AI_MAX_USER_CHARS         default 6000, hard ceiling 20000   (longest single message a student can send)
 //   AI_RL_PER_MIN / AI_RL_PER_HOUR / AI_RL_PER_DAY   per-IP request limits (defaults 15 / 100 / 250)
 //   AI_MAX_CONCURRENT         default 2      (simultaneous replies per IP)
 //   AI_STREAM_BUDGET_MS       default 50000  (soft time budget per reply; ends cleanly and the app shows "Continue". 0 = off)
-//   AI_ACCESS_CODE            optional shared code; if set, the browser must supply it (strongest anti-abuse option)
-// Netlify's own platform rate limit (below) is the outer safety net and is shared across all function instances.
+// Fixed limits: request body <= 300 KB; last 40 chat turns; <= 4 retrieved bank excerpts of <= 2200 chars; summarize <= 60 turns.
+// Rate limiting: Netlify's own platform limit (config.rateLimit below: 20 requests / 60 s per IP) is the shared outer net; the
+// in-memory per-IP limiter further down is only a best-effort extra (per warm function instance).
+import { createHash, timingSafeEqual } from "node:crypto";
+
 export const config = {
   path: "/api/chat",
-  rateLimit: { windowLimit: 30, windowSize: 60, aggregateBy: ["ip", "domain"] },
+  rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ["ip", "domain"] },
 };
 
 const env = (k) => globalThis.Netlify?.env?.get?.(k) ?? process.env[k];
@@ -64,13 +70,15 @@ const MODES = {
 };
 
 const cut = (s, n) => (typeof s === "string" ? s.slice(0, n) : "");
+// context fields are client-supplied: cap them and strip anything that could close/forge our own prompt tags
+const clean = (s, n) => cut(s, n).replace(/<\/?(?:current_question|bank_context|conversation_summary|app_location)\b[^>]*>/gi, "");
 
 /* ---------------- input limits ---------------- */
 function validate(b, maxUser, budget) {
   if (!b || typeof b !== "object") throw new Error("bad body");
   if (!Array.isArray(b.messages) || !b.messages.length) throw new Error("no messages");
   const msgs = [];
-  for (const m of b.messages.slice(-60)) {
+  for (const m of b.messages.slice(-40)) {
     if (!m || (m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string" || !m.content.trim()) continue;
     const c = m.content.slice(0, m.role === "user" ? maxUser : 20000);
     const last = msgs[msgs.length - 1];
@@ -92,13 +100,13 @@ function dynamicSystem(b) {
   const mode = MODES[b.mode] ?? "";
   if (mode) out.push(mode);
   const loc = c.location;
-  if (loc && typeof loc === "object") out.push(`<app_location>The student is on the "${cut(loc.page, 40)}" page${loc.part ? `, part: ${cut(loc.part, 80)}` : ""}${loc.topic ? `, topic filter: ${cut(loc.topic, 120)}` : ""}.</app_location>`);
+  if (loc && typeof loc === "object") out.push(`<app_location>The student is on the "${clean(loc.page, 40)}" page${loc.part ? `, part: ${clean(loc.part, 80)}` : ""}${loc.topic ? `, topic filter: ${clean(loc.topic, 120)}` : ""}.</app_location>`);
   const q = c.current;
   if (q && typeof q === "object")
-    out.push(`<current_question>\nQ${cut(String(q.n), 12)} — ${cut(q.title, 1500)}\nPart: ${cut(q.part, 80)} | Topic: ${cut(q.topic, 160)} | Asked in: ${cut(q.src, 300)}\nModel answer from the student's bank:\n${cut(q.answer, 12000)}\n</current_question>`);
+    out.push(`<current_question>\nQ${clean(String(q.n), 12)} — ${clean(q.title, 1500)}\nPart: ${clean(q.part, 80)} | Topic: ${clean(q.topic, 160)} | Asked in: ${clean(q.src, 300)}\nModel answer from the student's bank:\n${clean(q.answer, 12000)}\n</current_question>`);
   if (Array.isArray(c.retrieved) && c.retrieved.length)
-    out.push("<bank_context>\n" + c.retrieved.slice(0, 4).map((r) => `[Q${cut(String(r.n), 12)} · ${cut(r.topic, 120)}] ${cut(r.title, 400)}\n${cut(r.excerpt, 2500)}`).join("\n---\n") + "\n</bank_context>");
-  if (c.summary) out.push(`<conversation_summary>\n${cut(c.summary, 8000)}\n</conversation_summary>`);
+    out.push("<bank_context>\n" + c.retrieved.slice(0, 4).map((r) => `[Q${clean(String(r.n), 12)} · ${clean(r.topic, 120)}] ${clean(r.title, 400)}\n${clean(r.excerpt, 2200)}`).join("\n---\n") + "\n</bank_context>");
+  if (c.summary) out.push(`<conversation_summary>\n${clean(c.summary, 8000)}\n</conversation_summary>`);
   return out.join("\n\n");
 }
 
@@ -125,11 +133,11 @@ const live = (ip, d) => { const n = Math.max(0, (LIVE.get(ip) || 0) + d); n ? LI
 /* ---------------- Gemini ---------------- */
 const SAFETY = ["HARASSMENT", "HATE_SPEECH", "SEXUALLY_EXPLICIT", "DANGEROUS_CONTENT"].map((c) => ({ category: "HARM_CATEGORY_" + c, threshold: "BLOCK_ONLY_HIGH" }));
 
-function callGemini(model, key, system, messages, signal) {
+function callGemini(model, key, system, messages, signal, maxTok) {
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
-    generationConfig: { maxOutputTokens: Math.max(256, num("GEMINI_MAX_OUTPUT_TOKENS", 8192)) },
+    generationConfig: { maxOutputTokens: Math.min(Math.max(256, num("GEMINI_MAX_OUTPUT_TOKENS", 8000)), 8000, maxTok || 8000) },
     safetySettings: SAFETY,
   };
   const tl = env("GEMINI_THINKING_LEVEL");
@@ -142,14 +150,14 @@ function callGemini(model, key, system, messages, signal) {
 }
 
 // Tries the main model, then the fallback model if the main one is rate-limited / overloaded / unavailable.
-async function upstream(system, messages, signal) {
+async function upstream(system, messages, signal, maxTok) {
   const key = env("GEMINI_API_KEY");
   if (!key) throw Object.assign(new Error("config"), { code: "server_config" });
   const main = env("GEMINI_MODEL") || DEFAULT_MODEL, fb = env("GEMINI_FALLBACK_MODEL") ?? DEFAULT_FALLBACK;
   const models = fb && fb !== main ? [main, fb] : [main];
   let res;
   for (const m of models) {
-    res = await callGemini(m, key, system, messages, signal);
+    res = await callGemini(m, key, system, messages, signal, maxTok);
     if (res.ok) return res;
     console.error("gemini", m, res.status);
     if (![404, 429, 500, 503].includes(res.status)) break; // 400/401/403: fallback would not help
@@ -195,15 +203,24 @@ const ERR = {
   blocked: "That request could not be answered. Try rephrasing it.",
 };
 
+// constant-time comparison: hash both sides first so the compared buffers always have equal length
+const sha = (v) => createHash("sha256").update(String(v)).digest();
+const sameCode = (a, b) => timingSafeEqual(sha(a), sha(b));
+const MAX_BODY = 300 * 1024;
+
 export default async (req, context) => {
   if (req.method !== "POST") return J({ error: "method" }, 405);
   const code = env("AI_ACCESS_CODE");
-  if (code && req.headers.get("x-access-code") !== code) return J({ error: "auth", message: "Access code required." }, 401);
+  if (!code) {
+    // fail closed: without an access code anyone on the internet could spend the Gemini quota
+    if (env("AI_ALLOW_OPEN") !== "true") return J({ error: "server_config", message: "AI access is not configured." }, 503);
+  } else if (!sameCode(req.headers.get("x-access-code") || "", code)) return J({ error: "auth", message: "Access code required." }, 401);
 
   let b;
   try {
+    if (parseInt(req.headers.get("content-length") || "0", 10) > MAX_BODY) return J({ error: "too_large", message: "Request too large." }, 413);
     const raw = await req.text();
-    if (raw.length > 400000) return J({ error: "too_large", message: "Request too large." }, 413);
+    if (new TextEncoder().encode(raw).length > MAX_BODY) return J({ error: "too_large", message: "Request too large." }, 413);
     b = JSON.parse(raw);
   } catch { return J({ error: "bad_json", message: "Malformed request." }, 400); }
 
@@ -213,7 +230,7 @@ export default async (req, context) => {
   const maxConc = num("AI_MAX_CONCURRENT", 2);
   if (maxConc && (LIVE.get(ip) || 0) >= maxConc) return J({ error: "rate_limit", message: "Please wait for your current answers to finish." }, 429, { "retry-after": "5" });
 
-  const maxIn = num("AI_MAX_INPUT_CHARS", 48000) || 48000, maxUser = num("AI_MAX_USER_CHARS", 6000) || 6000;
+  const maxIn = Math.min(num("AI_MAX_INPUT_CHARS", 48000) || 48000, 60000), maxUser = Math.min(num("AI_MAX_USER_CHARS", 6000) || 6000, 20000);
   live(ip, +1);                       // reserve a slot before any await so parallel requests are counted
   let held = true, streaming = false;
   try {
@@ -222,7 +239,7 @@ export default async (req, context) => {
       const turns = (Array.isArray(b.messages) ? b.messages : []).filter((m) => m && typeof m.content === "string").slice(-60)
         .map((m) => `${m.role === "user" ? "STUDENT" : "ASSISTANT"}: ${m.content.slice(0, 3000)}`).join("\n\n").slice(-30000);
       const prompt = `Update the running summary of a microbiology study chat. Keep every fact, correction, decision, topic covered, the student's preferences and any unfinished task. Be compact (under 500 words), in bullet points.\n\nPREVIOUS SUMMARY:\n${cut(b.previousSummary, 8000) || "(none)"}\n\nNEW TURNS TO FOLD IN:\n${turns}`;
-      const r = await upstream("You write faithful, compact conversation summaries.", [{ role: "user", content: prompt }], req.signal);
+      const r = await upstream("You write faithful, compact conversation summaries.", [{ role: "user", content: prompt }], req.signal, 4000); // summaries are short: don't let this action act as a general-purpose long-form proxy
       if (!r.ok) { const e = mapStatus(r.status, await r.text().catch(() => "")); return J({ error: e, message: ERR[e] }, r.status === 429 ? 429 : 502); }
       let s = ""; for await (const ev of events(r)) if (ev.t) s += ev.t;
       return J({ summary: s.trim() });
@@ -234,7 +251,7 @@ export default async (req, context) => {
     const r = await upstream(system, messages, req.signal);
     if (!r.ok) {
       const errText = await r.text().catch(() => "");
-      console.error("upstream", r.status, errText.slice(0, 400));
+      console.error("upstream", r.status, (() => { try { return JSON.parse(errText)?.error?.status || ""; } catch { return ""; } })()); // status only: never log bodies or keys
       const e = mapStatus(r.status, errText);
       return J({ error: e, message: ERR[e] }, r.status === 429 ? 429 : 502);
     }
