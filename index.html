@@ -1266,7 +1266,7 @@ async function generate(c,opt={}){ // fills the last (assistant) message of chat
     const r=await api({messages:hist,mode:c.mode,context:ctxFor(c,ui)},sig);
     if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw Object.assign(new Error(j.message||'http'),{code:r.status===404?'unavailable':(j.error||'http'),msg:j.message})}
     const rd=r.body.getReader(),dec=new TextDecoder();let buf='',raf=0,lt=0;
-    const paint=()=>{raf=0;const n=performance.now();if(n-lt<40){raf=requestAnimationFrame(paint);return}lt=n;if(cur===c&&AI.live){AI.live.classList.add('ai-cur');AI.live.innerHTML=renderMd(m.content);toEnd()}};
+    const paint=()=>{raf=0;const n=performance.now();if(n-lt<Math.min(250,Math.max(40,40+m.content.length/40))){raf=requestAnimationFrame(paint);return} /* adaptive: re-parsing the whole reply every 40ms is O(n^2) on long answers */lt=n;if(cur===c&&AI.live){AI.live.classList.add('ai-cur');AI.live.innerHTML=renderMd(m.content);toEnd()}};
     for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
       while((i=buf.indexOf('\n\n'))>=0){const blk=buf.slice(0,i);buf=buf.slice(i+2);
         for(const l of blk.split('\n')){if(!l.startsWith('data:'))continue;let j;try{j=JSON.parse(l.slice(5))}catch(e){continue}
